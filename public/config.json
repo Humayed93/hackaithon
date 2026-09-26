@@ -1,0 +1,17 @@
+{
+  "eventName": "the hackAIthon finals",
+  "committeePin": "2809",
+  "adminPin": "change-this-pin",
+  "committee": [
+    { "id": "abu-noufal", "name": "Abu Noufal" },
+    { "id": "abu-muhammad", "name": "Abu Muhammad" },
+    { "id": "abu-abdulaziz", "name": "Abu Abdulaziz" }
+  ],
+  "finalists": [
+    { "id": "cxone", "title": "CXOne", "presenter": "Khaled Elamrousy" },
+    { "id": "sanad", "title": "Sanad", "presenter": "Abdulaziz Almalke" },
+    { "id": "delivery-agent", "title": "AI-Powered Digital Delivery Agent", "presenter": "Magdy Abdelwahed" },
+    { "id": "digital-treasure", "title": "stc Digital Treasure", "presenter": "Turki Altamimi" },
+    { "id": "cloud-architect", "title": "Cloud Architect AI", "presenter": "Muhammad Tariq" }
+  ]
+}
