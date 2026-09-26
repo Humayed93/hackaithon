@@ -1,0 +1,13 @@
+{
+  "name": "hackaithon-finals",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Committee scoring and people's choice voting for the hackAIthon finals",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
