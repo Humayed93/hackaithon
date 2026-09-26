@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Finals control | hackAIthon finals</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .grid { display: grid; gap: 20px; margin-top: 28px; grid-template-columns: 1fr; }
+  @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1.4fr; } }
+  .panel { border: 1px solid var(--grey-5); padding: 24px; }
+  .panel h2 { margin-bottom: 14px; }
+  .status { font-size: 22px; font-weight: 500; }
+  .status-sub { color: var(--grey-2); margin-top: 4px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--grey-5); vertical-align: top; }
+  th { font-weight: 500; color: var(--grey-1); font-size: 14px; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .table-scroll { overflow-x: auto; margin-top: 8px; }
+  .done { color: var(--purple); font-weight: 600; }
+  .none { color: var(--grey-2); }
+  .flag { display: inline-block; margin-top: 4px; font-size: 13px; color: var(--purple-dark); background: var(--purple-tint); padding: 2px 8px; }
+
+  .section { margin-top: 44px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  .bars { margin-top: 12px; display: grid; gap: 14px; }
+  .bar-label { display: flex; justify-content: space-between; gap: 12px; font-weight: 500; }
+  .bar-track { height: 12px; background: var(--off-white); margin-top: 6px; }
+  .bar-fill { height: 100%; background: var(--purple); }
+
+  .comments details { border-bottom: 1px solid var(--grey-5); padding: 12px 0; }
+  .comments summary { cursor: pointer; font-weight: 500; }
+  .comments p { margin-top: 8px; color: var(--grey-1); }
+
+  .tools { display: grid; gap: 20px; grid-template-columns: 1fr; }
+  @media (min-width: 900px) { .tools { grid-template-columns: 1fr 1fr; } }
+  .reset-row { display: grid; gap: 10px; grid-template-columns: 1fr; margin-top: 12px; }
+  @media (min-width: 600px) { .reset-row { grid-template-columns: 1.2fr 1fr auto; } }
+
+  /* ---------- projector screens ---------- */
+  .stage {
+    position: fixed; inset: 0; z-index: 20;
+    background: var(--purple-dark);
+    color: var(--white);
+    display: flex; flex-direction: column;
+    padding: 28px 40px 40px;
+  }
+  .stage-top { display: flex; justify-content: space-between; align-items: center; }
+  .stage .wordmark { font-size: 20px; }
+  .stage-close { background: none; border: 0; color: var(--white); font: inherit; font-size: 16px; text-decoration: underline; cursor: pointer; padding: 8px; }
+  .stage-body { flex: 1; display: flex; flex-direction: column; justify-content: center; max-width: 1200px; width: 100%; margin: 0 auto; }
+
+  .qr-layout { display: grid; grid-template-columns: 1fr; gap: 40px; align-items: center; }
+  @media (min-width: 900px) { .qr-layout { grid-template-columns: 1.1fr 1fr; } }
+  .stage h1 { font-size: clamp(44px, 6vw, 88px); line-height: 1.02; }
+  .stage .stage-lead { font-size: clamp(20px, 2vw, 28px); margin-top: 20px; opacity: 0.92; max-width: 26ch; }
+  .qr-box { background: var(--white); padding: 18px; width: min(46vh, 100%); justify-self: center; }
+  .qr-box svg { display: block; width: 100%; height: auto; }
+  .qr-url { margin-top: 14px; font-size: 18px; text-align: center; word-break: break-all; opacity: 0.9; }
+  .qr-count { margin-top: 28px; font-size: 22px; font-weight: 500; }
+
+  .reveal-label { font-size: clamp(20px, 2.2vw, 30px); opacity: 0.85; }
+  .reveal-title { font-size: clamp(48px, 7vw, 104px); font-weight: 500; line-height: 1.02; margin-top: 18px; }
+  .reveal-meta { font-size: clamp(20px, 2.2vw, 30px); margin-top: 22px; opacity: 0.9; }
+  .reveal-in { animation: rise 600ms ease both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .reveal-in { animation: none; } }
+  .stage-actions { margin-top: 48px; }
+</style>
+</head>
+<body>
+
+<header class="band">
+  <div class="wordmark">the hack<span class="ai">AI</span>thon finals</div>
+</header>
+
+<main class="wrap wrap-wide">
+
+  <section id="s-pin" data-screen>
+    <h1>finals control</h1>
+    <p class="lead">Enter the admin PIN.</p>
+    <form id="pin-form" novalidate style="max-width:420px">
+      <label class="field" for="pin">Admin PIN</label>
+      <input id="pin" type="password" autocomplete="off">
+      <p class="error-text" id="pin-error" role="alert"></p>
+      <button class="btn btn-block" type="submit">Continue</button>
+    </form>
+  </section>
+
+  <section id="s-main" data-screen class="hidden">
+    <h1>finals control</h1>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>people's choice</h2>
+        <div class="status" id="vote-status"></div>
+        <div class="status-sub" id="vote-count"></div>
+        <div class="actions">
+          <button type="button" class="btn" id="vote-toggle"></button>
+          <button type="button" class="btn btn-secondary" id="qr-btn">Show voting QR</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>committee scoring</h2>
+        <div class="status" id="lock-status"></div>
+        <div class="status-sub" id="card-count"></div>
+        <div class="table-scroll"><table id="progress"></table></div>
+        <div class="actions">
+          <button type="button" class="btn btn-secondary" id="lock-toggle"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h2>results</h2>
+        <div class="actions" style="margin-top:0">
+          <button type="button" class="btn btn-secondary" id="results-toggle">Show results</button>
+          <button type="button" class="btn" id="reveal-btn">Reveal winners</button>
+        </div>
+      </div>
+      <p class="muted" id="reveal-warning" style="margin-top:10px"></p>
+
+      <div id="results" class="hidden">
+        <h3 style="margin-top:24px;font-size:18px">committee ranking</h3>
+        <p class="muted">Average of each member's total out of 25. Ties on total go to the higher value score, then feasibility.</p>
+        <div class="table-scroll"><table id="ranking"></table></div>
+
+        <h3 style="margin-top:36px;font-size:18px">people's choice</h3>
+        <div class="bars" id="bars"></div>
+
+        <h3 style="margin-top:36px;font-size:18px">committee comments</h3>
+        <div class="comments" id="comments"></div>
+      </div>
+    </div>
+
+    <div class="section tools">
+      <div class="panel">
+        <h2>download</h2>
+        <p class="muted">All committee scores, comments, the ranking and vote counts in one CSV file.</p>
+        <div class="actions"><button type="button" class="btn btn-secondary" id="csv-btn">Download results (CSV)</button></div>
+      </div>
+      <div class="panel">
+        <h2>reset</h2>
+        <p class="muted">Use this to clear test data before the event. This cannot be undone.</p>
+        <div class="reset-row">
+          <select id="reset-scope" aria-label="What to reset">
+            <option value="votes">Votes only</option>
+            <option value="scores">Committee scores only</option>
+            <option value="all">Everything</option>
+          </select>
+          <input type="text" id="reset-confirm" placeholder="Type RESET" aria-label="Type RESET to confirm" autocomplete="off">
+          <button type="button" class="btn btn-secondary" id="reset-btn">Reset</button>
+        </div>
+        <p class="error-text" id="reset-msg" role="status"></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- projector: voting QR -->
+<div class="stage hidden" id="qr-stage" role="dialog" aria-label="Voting QR code">
+  <div class="stage-top">
+    <div class="wordmark">the hack<span class="ai">AI</span>thon finals</div>
+    <button type="button" class="stage-close" data-close>Close</button>
+  </div>
+  <div class="stage-body">
+    <div class="qr-layout">
+      <div>
+        <h1>people's choice</h1>
+        <p class="stage-lead">Scan to vote for the idea you would most like to see built.</p>
+        <p class="qr-count" id="qr-count"></p>
+      </div>
+      <div>
+        <div class="qr-box" id="qr-box"></div>
+        <p class="qr-url" id="qr-url"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- projector: reveal -->
+<div class="stage hidden" id="reveal-stage" role="dialog" aria-label="Reveal winners">
+  <div class="stage-top">
+    <div class="wordmark">the hack<span class="ai">AI</span>thon finals</div>
+    <button type="button" class="stage-close" data-close>Close</button>
+  </div>
+  <div class="stage-body" id="reveal-body"></div>
+</div>
+
+<script src="/vendor/qrcode.js"></script>
+<script src="/common.js"></script>
+<script>
+(function () {
+  const SS_PIN = 'hk_admin_pin';
+  let pin = sessionStorage.getItem(SS_PIN) || '';
+  let st = null;
+  let resultsShown = false;
+  let revealStep = 0;
+  let snapshot = null;
+
+  const titleOf = id => (st.finalists.find(f => f.id === id) || {}).title || '';
+  const presenterOf = id => (st.finalists.find(f => f.id === id) || {}).presenter || '';
+  const fmt = n => (n === null || n === undefined) ? '' : (Math.round(n * 100) / 100).toString();
+
+  async function load() {
+    const r = await api('/api/admin/state', { pin });
+    if (r.status === 401) { sessionStorage.removeItem(SS_PIN); pin = ''; show('s-pin'); return false; }
+    if (!r.ok) return false;
+    st = r.data;
+    render();
+    return true;
+  }
+
+  $('#pin-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('#pin-error').textContent = '';
+    pin = $('#pin').value.trim();
+    const r = await api('/api/admin/state', { pin });
+    if (!r.ok) { $('#pin-error').textContent = r.data.error || 'That PIN is not right.'; return; }
+    sessionStorage.setItem(SS_PIN, pin);
+    st = r.data;
+    show('s-main');
+    render();
+  });
+
+  function render() {
+    // people's choice panel
+    $('#vote-status').textContent = st.votingOpen ? 'Voting is open' : (st.votingClosed ? 'Voting is closed' : 'Voting has not started');
+    $('#vote-count').textContent = `${st.votes.total} ${st.votes.total === 1 ? 'vote' : 'votes'} cast`;
+    $('#vote-toggle').textContent = st.votingOpen ? 'Close voting' : 'Open voting';
+    $('#qr-count').textContent = `${st.votes.total} ${st.votes.total === 1 ? 'vote' : 'votes'} so far`;
+
+    // committee panel
+    const cards = st.committee.length * st.finalists.length;
+    let complete = 0;
+    st.committee.forEach(m => st.finalists.forEach(f => { if (st.progress[m.id][f.id] === 5) complete++; }));
+    $('#lock-status').textContent = st.scoringLocked ? 'Scoring is locked' : 'Scoring is open';
+    $('#card-count').textContent = `${complete} of ${cards} scorecards complete`;
+    $('#lock-toggle').textContent = st.scoringLocked ? 'Unlock scoring' : 'Lock scoring';
+    $('#progress').innerHTML =
+      `<thead><tr><th>Member</th>${st.finalists.map(f => `<th>${esc(f.title)}</th>`).join('')}</tr></thead><tbody>` +
+      st.committee.map(m => `<tr><td>${esc(m.name)}</td>${st.finalists.map(f => {
+        const n = st.progress[m.id][f.id];
+        return `<td class="${n === 5 ? 'done' : 'none'}">${n === 5 ? 'Done' : n + ' of 5'}</td>`;
+      }).join('')}</tr>`).join('') + '</tbody>';
+
+    $('#reveal-warning').textContent = complete < cards
+      ? `${cards - complete} ${cards - complete === 1 ? 'scorecard is' : 'scorecards are'} not complete yet. The committee result uses completed scorecards only.`
+      : 'All scorecards are complete.';
+
+    // results
+    $('#results').classList.toggle('hidden', !resultsShown);
+    $('#results-toggle').textContent = resultsShown ? 'Hide results' : 'Show results';
+    if (resultsShown) renderResults();
+  }
+
+  function renderResults() {
+    const heads = ['Value', 'Feasibility', 'Risk', 'Originality', 'Presentation'];
+    const keys = ['value', 'feasibility', 'risk', 'originality', 'presentation'];
+    $('#ranking').innerHTML =
+      `<thead><tr><th>Rank</th><th>Idea</th>${heads.map(h => `<th class="num">${h}</th>`).join('')}<th class="num">Total / 25</th><th class="num">Scored by</th></tr></thead><tbody>` +
+      st.ranking.map(r => `<tr>
+        <td>${r.rank ?? ''}</td>
+        <td><strong>${esc(r.title)}</strong><div class="muted">${esc(r.presenter)}</div>
+          ${r.unresolvedTie ? '<span class="flag">Tied on total, value and feasibility. The chair decides.</span>' :
+            r.tiedOnTotal ? '<span class="flag">Tied on total. Ranked by value, then feasibility.</span>' : ''}</td>
+        ${keys.map(k => `<td class="num">${fmt(r.avg[k])}</td>`).join('')}
+        <td class="num"><strong>${fmt(r.total)}</strong></td>
+        <td class="num">${r.membersComplete} of ${st.committee.length}</td>
+      </tr>`).join('') + '</tbody>';
+
+    const max = Math.max(1, ...Object.values(st.votes.counts));
+    const sorted = st.finalists.slice().sort((a, b) => st.votes.counts[b.id] - st.votes.counts[a.id]);
+    $('#bars').innerHTML = sorted.map(f => {
+      const n = st.votes.counts[f.id];
+      return `<div><div class="bar-label"><span>${esc(f.title)}</span><span>${n}</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(n / max) * 100}%"></div></div></div>`;
+    }).join('');
+
+    const blocks = st.finalists.map(f => {
+      const list = st.comments[f.id] || [];
+      if (!list.length) return '';
+      return `<details><summary>${esc(f.title)} (${list.length})</summary>${list.map(c => `<p><strong>${esc(c.member)}:</strong> ${esc(c.comment)}</p>`).join('')}</details>`;
+    }).join('');
+    $('#comments').innerHTML = blocks || '<p class="muted">No comments yet.</p>';
+  }
+
+  // ---------- controls
+  $('#vote-toggle').addEventListener('click', async () => {
+    await api('/api/admin/voting', { method: 'POST', pin, body: { open: !st.votingOpen } });
+    load();
+  });
+  $('#lock-toggle').addEventListener('click', async () => {
+    await api('/api/admin/lock', { method: 'POST', pin, body: { locked: !st.scoringLocked } });
+    load();
+  });
+  $('#results-toggle').addEventListener('click', () => { resultsShown = !resultsShown; render(); });
+
+  $('#csv-btn').addEventListener('click', async () => {
+    const res = await fetch('/api/admin/export', { headers: { 'x-pin': pin } });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'hackaithon-finals-results.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  $('#reset-btn').addEventListener('click', async () => {
+    const msg = $('#reset-msg');
+    if ($('#reset-confirm').value.trim() !== 'RESET') { msg.textContent = 'Type RESET to confirm.'; return; }
+    const r = await api('/api/admin/reset', { method: 'POST', pin, body: { scope: $('#reset-scope').value, confirm: 'RESET' } });
+    msg.textContent = r.ok ? 'Reset done.' : (r.data.error || 'Reset failed.');
+    $('#reset-confirm').value = '';
+    load();
+  });
+
+  // ---------- projector: QR
+  $('#qr-btn').addEventListener('click', () => {
+    const url = location.origin + '/vote';
+    const qr = qrcode(0, 'M');
+    qr.addData(url);
+    qr.make();
+    $('#qr-box').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+    $('#qr-url').textContent = url.replace(/^https?:\/\//, '');
+    $('#qr-stage').classList.remove('hidden');
+  });
+
+  // ---------- projector: reveal
+  $('#reveal-btn').addEventListener('click', async () => {
+    await load();
+    snapshot = JSON.parse(JSON.stringify(st));
+    revealStep = 0;
+    renderReveal();
+    $('#reveal-stage').classList.remove('hidden');
+  });
+
+  function peopleWinner() {
+    const v = snapshot.votes;
+    if (!v.leaders.length) return { names: 'No votes yet', meta: '' };
+    const names = v.leaders.map(titleOf).join(' and ');
+    const people = v.leaders.map(presenterOf).join(' and ');
+    const n = v.counts[v.leaders[0]];
+    return { names, meta: `${people}${v.tie ? ' (tied)' : ''}`, count: `${n} of ${v.total} votes` };
+  }
+
+  function committeeWinner() {
+    const top = snapshot.ranking.filter(r => r.rank !== null);
+    if (!top.length) return { names: 'No complete scores yet', meta: '' };
+    const first = top[0];
+    if (first.unresolvedTie) {
+      const tied = top.filter(r => r.total === first.total && r.avg.value === first.avg.value && r.avg.feasibility === first.avg.feasibility);
+      return { names: tied.map(r => r.title).join(' and '), meta: 'Tied. The chair decides.' };
+    }
+    return { names: first.title, meta: first.presenter };
+  }
+
+  function renderReveal() {
+    const body = $('#reveal-body');
+    if (revealStep === 0) {
+      body.innerHTML = `<h1>the results</h1>
+        <div class="stage-actions"><button type="button" class="btn" id="next-btn">Reveal people's choice</button></div>`;
+    } else if (revealStep === 1) {
+      const w = peopleWinner();
+      body.innerHTML = `<div class="reveal-in"><div class="reveal-label">People's choice</div>
+        <div class="reveal-title">${esc(w.names)}</div>
+        <div class="reveal-meta">${esc(w.meta)}${w.count ? '<br>' + esc(w.count) : ''}</div></div>
+        <div class="stage-actions"><button type="button" class="btn" id="next-btn">Reveal committee 1st place</button></div>`;
+    } else {
+      const w = committeeWinner();
+      body.innerHTML = `<div class="reveal-in"><div class="reveal-label">Committee 1st place</div>
+        <div class="reveal-title">${esc(w.names)}</div>
+        <div class="reveal-meta">${esc(w.meta)}</div></div>
+        <div class="stage-actions"><button type="button" class="btn btn-secondary" id="next-btn">Close</button></div>`;
+    }
+    $('#next-btn').addEventListener('click', nextReveal);
+    $('#next-btn').focus();
+  }
+
+  function nextReveal() {
+    if (revealStep >= 2) { closeStages(); return; }
+    revealStep++;
+    renderReveal();
+  }
+
+  function closeStages() {
+    $('#qr-stage').classList.add('hidden');
+    $('#reveal-stage').classList.add('hidden');
+  }
+  document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeStages));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeStages();
+    if (!$('#reveal-stage').classList.contains('hidden') && (e.key === 'ArrowRight' || e.key === ' ')) {
+      if (document.activeElement && document.activeElement.id === 'next-btn' && e.key === ' ') return;
+      e.preventDefault();
+      nextReveal();
+    }
+  });
+
+  // ---------- start
+  (async function start() {
+    if (pin && await load()) show('s-main');
+    else show('s-pin');
+    setInterval(() => { if (pin && st && !document.hidden) load(); }, 3000);
+  })();
+})();
+</script>
+</body>
+</html>

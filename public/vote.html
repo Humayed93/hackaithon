@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>People's choice | hackAIthon finals</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .options { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 10px; }
+  .option {
+    width: 100%;
+    display: flex; align-items: center; gap: 14px;
+    padding: 18px 16px;
+    border: 1px solid var(--grey-2);
+    background: var(--white);
+    color: var(--black);
+    font: inherit; font-size: 18px; font-weight: 500; line-height: 1.25;
+    text-align: left;
+    cursor: pointer;
+  }
+  .option:hover { background: var(--off-white); }
+  .option .box { width: 22px; height: 22px; border: 2px solid var(--grey-2); flex-shrink: 0; position: relative; }
+  .option[aria-checked="true"] { border: 2px solid var(--coral); padding: 17px 15px; }
+  .option[aria-checked="true"] .box { border-color: var(--coral); background: var(--coral); }
+  .option[aria-checked="true"] .box::after {
+    content: ""; position: absolute; left: 5px; top: 1px; width: 6px; height: 11px;
+    border: solid var(--white); border-width: 0 3px 3px 0; transform: rotate(45deg);
+  }
+
+  .finalist-list { list-style: none; padding: 0; margin: 16px 0 0; border-top: 1px solid var(--grey-5); }
+  .finalist-list li { padding: 14px 0; border-bottom: 1px solid var(--grey-5); font-size: 17px; }
+  .sub-h { margin-top: 36px; }
+
+  .confirm {
+    margin-top: 8px;
+    background: var(--purple);
+    color: var(--white);
+    padding: 36px 24px 40px;
+  }
+  .confirm h1 { font-size: 34px; }
+  .confirm .choice { font-size: 24px; font-weight: 500; margin-top: 22px; line-height: 1.25; }
+  .confirm p { margin-top: 10px; opacity: 0.92; }
+
+  .votebar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+    background: var(--white);
+    border-top: 1px solid var(--grey-5);
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  }
+  .votebar-inner { max-width: 720px; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<header class="band">
+  <div class="wordmark">the hack<span class="ai">AI</span>thon finals</div>
+</header>
+
+<main class="wrap">
+
+  <section id="s-loading" data-screen>
+    <p class="muted">Loading</p>
+  </section>
+
+  <section id="s-wait" data-screen class="hidden">
+    <h1>people's choice</h1>
+    <p class="lead">Voting opens after the final pitch. Keep this page open and it will update on its own.</p>
+    <h2 class="sub-h">the finalists</h2>
+    <ul class="finalist-list" id="wait-list"></ul>
+  </section>
+
+  <section id="s-vote" data-screen class="hidden">
+    <h1>people's choice</h1>
+    <p class="lead">Which idea would you most like to see built? You have one vote.</p>
+    <div class="options" role="radiogroup" aria-label="Finalists" id="options"></div>
+    <p class="error-text" id="vote-error" role="alert"></p>
+  </section>
+
+  <section id="s-done" data-screen class="hidden">
+    <div class="confirm">
+      <h1>your vote is in</h1>
+      <div class="choice" id="done-choice"></div>
+      <p>Thank you for taking part.</p>
+    </div>
+  </section>
+
+  <section id="s-closed" data-screen class="hidden">
+    <h1>voting is closed</h1>
+    <p class="lead">Thank you for taking part. The winners will be announced shortly.</p>
+  </section>
+
+</main>
+
+<div class="votebar hidden" id="votebar">
+  <div class="votebar-inner">
+    <button type="button" class="btn btn-block" id="vote-btn" disabled>Choose an idea</button>
+  </div>
+</div>
+
+<script src="/common.js"></script>
+<script>
+(function () {
+  const LS_TOKEN = 'hk_vote_token';
+  const LS_ORDER = 'hk_vote_order';
+
+  let token = localStorage.getItem(LS_TOKEN);
+  if (!token || !/^[a-f0-9]{32}$/.test(token)) {
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    token = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem(LS_TOKEN, token);
+  }
+
+  let finalists = [];
+  let selected = null;
+  let done = false;
+  let busy = false;
+
+  // Each phone sees the ideas in its own random order, so position on the screen does not sway votes.
+  function orderFor(list) {
+    let order = [];
+    try { order = JSON.parse(localStorage.getItem(LS_ORDER) || '[]'); } catch (e) { order = []; }
+    const ids = list.map(f => f.id);
+    if (order.length !== ids.length || !ids.every(id => order.includes(id))) {
+      order = ids.slice();
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      localStorage.setItem(LS_ORDER, JSON.stringify(order));
+    }
+    return order.map(id => list.find(f => f.id === id));
+  }
+
+  const titleOf = id => (finalists.find(f => f.id === id) || {}).title || '';
+
+  function showDone(choice) {
+    done = true;
+    $('#votebar').classList.add('hidden');
+    $('#done-choice').textContent = choice ? 'You voted for ' + titleOf(choice) + '.' : '';
+    show('s-done');
+  }
+
+  function renderOptions() {
+    $('#options').innerHTML = orderFor(finalists).map(f => `
+      <button type="button" class="option" role="radio" aria-checked="${selected === f.id}" data-id="${esc(f.id)}">
+        <span class="box" aria-hidden="true"></span><span>${esc(f.title)}</span>
+      </button>`).join('');
+    $('#options').querySelectorAll('.option').forEach(b => b.addEventListener('click', () => {
+      selected = b.dataset.id;
+      renderOptions();
+      const btn = $('#vote-btn');
+      btn.disabled = false;
+      btn.textContent = 'Vote for ' + titleOf(selected);
+    }));
+  }
+
+  function applyStatus(st) {
+    if (done) return;
+    if (st.voted) return showDone(st.choice);
+    if (st.votingOpen) {
+      if (!$('#s-vote').classList.contains('hidden')) return;
+      renderOptions();
+      $('#votebar').classList.remove('hidden');
+      show('s-vote');
+    } else {
+      $('#votebar').classList.add('hidden');
+      show(st.votingClosed ? 's-closed' : 's-wait');
+    }
+  }
+
+  async function refresh() {
+    const r = await api('/api/vote/status?token=' + token);
+    if (r.ok) applyStatus(r.data);
+  }
+
+  $('#vote-btn').addEventListener('click', async () => {
+    if (!selected || busy) return;
+    busy = true;
+    const btn = $('#vote-btn');
+    btn.disabled = true;
+    btn.textContent = 'Sending your vote';
+    $('#vote-error').textContent = '';
+    const r = await api('/api/vote', { method: 'POST', body: { token, finalistId: selected } });
+    busy = false;
+    if (r.ok) return showDone(r.data.choice);
+    if (r.data.error === 'already_voted') return showDone(r.data.choice);
+    if (r.status === 409) { await refresh(); return; }
+    $('#vote-error').textContent = r.data.error || 'Your vote did not go through. Try again.';
+    btn.disabled = false;
+    btn.textContent = 'Vote for ' + titleOf(selected);
+  });
+
+  (async function start() {
+    const r = await api('/api/public');
+    if (r.ok) {
+      finalists = r.data.finalists;
+      $('#wait-list').innerHTML = finalists.map(f => `<li>${esc(f.title)}</li>`).join('');
+    }
+    await refresh();
+    setInterval(() => { if (!done && !document.hidden) refresh(); }, 4000);
+  })();
+})();
+</script>
+</body>
+</html>

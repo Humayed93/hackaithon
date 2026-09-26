@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Committee scoring | hackAIthon finals</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .stack { display: grid; gap: 12px; margin-top: 28px; }
+  .progress { margin-top: 22px; font-weight: 500; }
+  .keep-case { text-transform: none; }
+
+  .criterion { padding: 30px 0 28px; border-bottom: 1px solid var(--grey-5); }
+  .criterion .desc { color: var(--grey-1); margin-top: 6px; font-size: 15px; max-width: 60ch; }
+
+  .scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 18px; }
+  .key {
+    position: relative;
+    height: 64px;
+    border: 2px solid var(--purple);
+    background: var(--white);
+    color: var(--purple);
+    font: inherit;
+    font-size: 22px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .key:hover { background: var(--purple-tint); }
+  .key.filled { background: var(--purple); color: var(--white); }
+  .key.chosen::after {
+    content: "";
+    position: absolute;
+    left: -2px; right: -2px; bottom: -9px;
+    height: 4px;
+    background: var(--coral);
+  }
+  .key:disabled { cursor: not-allowed; }
+  .scale.locked .key { opacity: 0.6; }
+
+  .anchor { margin-top: 20px; min-height: 1.5em; font-weight: 500; }
+  .anchor.empty { color: var(--grey-2); font-weight: 400; }
+
+  details.qs { margin-top: 10px; font-size: 14px; color: var(--grey-1); }
+  details.qs summary { cursor: pointer; color: var(--coral-dark); font-weight: 500; width: max-content; padding: 4px 0; }
+  details.qs ul { margin: 6px 0 0; padding-left: 18px; }
+
+  .scorebar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+    background: var(--white);
+    border-top: 1px solid var(--grey-5);
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  }
+  .scorebar-inner { max-width: 720px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .total { font-size: 20px; font-weight: 500; }
+  .save-state { font-size: 14px; color: var(--grey-2); min-height: 1.4em; }
+  .save-state.err { color: var(--error); }
+
+  @media (prefers-reduced-motion: reduce) { .key { transition: none; } }
+</style>
+</head>
+<body>
+
+<header class="band">
+  <div class="wordmark">the hack<span class="ai">AI</span>thon finals</div>
+  <div class="band-meta hidden" id="who">
+    <span id="who-name"></span>
+    <button type="button" id="switch-btn">Switch</button>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section id="s-pin" data-screen>
+    <h1>committee scoring</h1>
+    <p class="lead">Enter the committee PIN to start.</p>
+    <form id="pin-form" novalidate>
+      <label class="field" for="pin">Committee PIN</label>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off">
+      <p class="error-text" id="pin-error" role="alert"></p>
+      <button class="btn btn-block" type="submit">Continue</button>
+    </form>
+  </section>
+
+  <section id="s-member" data-screen class="hidden">
+    <h1>who is scoring?</h1>
+    <p class="lead">Your scores are saved under your name.</p>
+    <div class="stack" id="member-list"></div>
+  </section>
+
+  <section id="s-list" data-screen class="hidden">
+    <h1>finalists</h1>
+    <p class="lead">Score each idea right after its Q&amp;A. Scores save as you go, and you can change them until scoring is locked.</p>
+    <p class="progress" id="progress"></p>
+    <div class="notice hidden" id="lock-notice">Scoring is locked. Your scores are final.</div>
+    <ul class="rows" id="finalist-rows"></ul>
+  </section>
+
+  <section id="s-score" data-screen class="hidden">
+    <button type="button" class="btn-text" id="back-btn">All finalists</button>
+    <h1 class="keep-case" id="f-title" style="margin-top:8px"></h1>
+    <p class="lead" id="f-presenter"></p>
+    <div class="notice hidden" id="lock-notice-2">Scoring is locked. Your scores are final.</div>
+    <div id="criteria"></div>
+    <label class="field" for="comment">Comment (optional)</label>
+    <textarea id="comment" maxlength="1000"></textarea>
+  </section>
+
+</main>
+
+<div class="scorebar hidden" id="scorebar">
+  <div class="scorebar-inner">
+    <div>
+      <div class="total" id="total"></div>
+      <div class="save-state" id="save-state" aria-live="polite"></div>
+    </div>
+    <button type="button" class="btn" id="done-btn">Done</button>
+  </div>
+</div>
+
+<script src="/common.js"></script>
+<script>
+(function () {
+  const LS_PIN = 'hk_committee_pin';
+  const LS_MEMBER = 'hk_committee_member';
+
+  let pin = localStorage.getItem(LS_PIN) || '';
+  let memberId = localStorage.getItem(LS_MEMBER) || '';
+  let committee = [];
+  let finalists = [];
+  let scores = {};
+  let locked = false;
+  let current = null;
+  let commentTimer = null;
+
+  const scoredCount = e => CRITERIA.filter(c => Number.isInteger((e || {})[c.key])).length;
+  const totalOf = e => CRITERIA.reduce((s, c) => s + ((e || {})[c.key] || 0), 0);
+  const memberName = () => (committee.find(m => m.id === memberId) || {}).name || '';
+
+  // ---------- login
+  async function login(p, silent) {
+    const r = await api('/api/committee/login', { method: 'POST', pin: p });
+    if (!r.ok) {
+      if (!silent) $('#pin-error').textContent = r.data.error || 'That PIN is not right.';
+      return false;
+    }
+    pin = p;
+    localStorage.setItem(LS_PIN, p);
+    committee = r.data.committee;
+    finalists = r.data.finalists;
+    locked = r.data.locked;
+    return true;
+  }
+
+  $('#pin-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('#pin-error').textContent = '';
+    const p = $('#pin').value.trim();
+    if (!p) { $('#pin-error').textContent = 'Enter the PIN.'; return; }
+    if (await login(p)) afterLogin();
+  });
+
+  function afterLogin() {
+    if (committee.some(m => m.id === memberId)) { loadScores().then(showList); }
+    else showMembers();
+  }
+
+  // ---------- member choice
+  function showMembers() {
+    $('#who').classList.add('hidden');
+    $('#scorebar').classList.add('hidden');
+    $('#member-list').innerHTML = committee.map(m =>
+      `<button type="button" class="btn btn-secondary btn-block" data-id="${esc(m.id)}">${esc(m.name)}</button>`).join('');
+    $('#member-list').querySelectorAll('button').forEach(b => b.addEventListener('click', async () => {
+      memberId = b.dataset.id;
+      localStorage.setItem(LS_MEMBER, memberId);
+      await loadScores();
+      showList();
+    }));
+    show('s-member');
+  }
+
+  $('#switch-btn').addEventListener('click', () => {
+    memberId = '';
+    localStorage.removeItem(LS_MEMBER);
+    showMembers();
+  });
+
+  async function loadScores() {
+    const r = await api('/api/committee/state?member=' + encodeURIComponent(memberId), { pin });
+    if (r.ok) { scores = r.data.scores || {}; locked = r.data.locked; }
+    else if (r.status === 401) { localStorage.removeItem(LS_PIN); show('s-pin'); }
+    return r.ok;
+  }
+
+  // ---------- list
+  function showList() {
+    current = null;
+    $('#who').classList.remove('hidden');
+    $('#who-name').textContent = memberName();
+    $('#scorebar').classList.add('hidden');
+    renderList();
+    show('s-list');
+  }
+
+  function renderList() {
+    const done = finalists.filter(f => scoredCount(scores[f.id]) === 5).length;
+    $('#progress').textContent = `${done} of ${finalists.length} finalists scored`;
+    $('#lock-notice').classList.toggle('hidden', !locked);
+    $('#finalist-rows').innerHTML = finalists.map(f => {
+      const e = scores[f.id];
+      const n = scoredCount(e);
+      let side;
+      if (n === 5) side = `<div class="row-score">${totalOf(e)} / 25</div><div class="row-action">${locked ? 'View' : 'Edit'}</div>`;
+      else if (n > 0) side = `<div class="row-score muted">${n} of 5</div><div class="row-action">${locked ? 'View' : 'Continue'}</div>`;
+      else side = `<div class="row-action">${locked ? 'View' : 'Score'}</div>`;
+      return `<li><button type="button" class="row" data-id="${esc(f.id)}">
+        <span><span class="row-title">${esc(f.title)}</span><span class="row-sub" style="display:block">${esc(f.presenter)}</span></span>
+        <span class="row-side">${side}</span></button></li>`;
+    }).join('');
+    $('#finalist-rows').querySelectorAll('.row').forEach(b => b.addEventListener('click', () => openFinalist(b.dataset.id)));
+  }
+
+  // ---------- scoring
+  function openFinalist(id) {
+    current = id;
+    const f = finalists.find(x => x.id === id);
+    scores[id] = scores[id] || {};
+    $('#f-title').textContent = f.title;
+    $('#f-presenter').textContent = f.presenter;
+    $('#lock-notice-2').classList.toggle('hidden', !locked);
+    $('#criteria').innerHTML = CRITERIA.map(c => `
+      <div class="criterion" id="c-${c.key}">
+        <h2>${esc(c.label)}</h2>
+        <p class="desc">${esc(c.desc)}</p>
+        <div class="scale" role="radiogroup" aria-label="${esc(c.label)} score"></div>
+        <p class="anchor" aria-live="polite"></p>
+        <details class="qs"><summary>Guiding questions</summary>
+          <ul>${c.questions.map(q => `<li>${esc(q)}</li>`).join('')}</ul>
+        </details>
+      </div>`).join('');
+    CRITERIA.forEach(renderCriterion);
+    const ta = $('#comment');
+    ta.value = scores[id].comment || '';
+    ta.disabled = locked;
+    $('#save-state').textContent = '';
+    $('#save-state').classList.remove('err');
+    $('#scorebar').classList.remove('hidden');
+    updateTotal();
+    show('s-score');
+  }
+
+  function renderCriterion(c) {
+    const val = scores[current][c.key];
+    const wrap = document.querySelector(`#c-${c.key} .scale`);
+    wrap.classList.toggle('locked', locked);
+    wrap.innerHTML = [1, 2, 3, 4, 5].map(n => {
+      const cls = ['key'];
+      if (Number.isInteger(val) && n <= val) cls.push('filled');
+      if (val === n) cls.push('chosen');
+      return `<button type="button" class="${cls.join(' ')}" role="radio" aria-checked="${val === n}"
+        aria-label="${n}, ${esc(c.anchors[n - 1])}" data-n="${n}" ${locked ? 'disabled' : ''}>${n}</button>`;
+    }).join('');
+    wrap.querySelectorAll('.key').forEach(k => k.addEventListener('click', () => setScore(c, Number(k.dataset.n))));
+    const a = document.querySelector(`#c-${c.key} .anchor`);
+    if (Number.isInteger(val)) { a.textContent = `${val}. ${c.anchors[val - 1]}`; a.classList.remove('empty'); }
+    else { a.textContent = 'Tap a score from 1 to 5'; a.classList.add('empty'); }
+  }
+
+  function updateTotal() {
+    const e = scores[current] || {};
+    const n = scoredCount(e);
+    $('#total').textContent = n === 5 ? `Total ${totalOf(e)} / 25` : `${n} of 5 criteria scored`;
+  }
+
+  function saveState(text, isErr) {
+    const el = $('#save-state');
+    el.textContent = text;
+    el.classList.toggle('err', !!isErr);
+  }
+
+  async function setScore(c, n) {
+    if (locked) return;
+    const id = current;
+    scores[id][c.key] = n;
+    renderCriterion(c);
+    updateTotal();
+    saveState('Saving');
+    const r = await api('/api/committee/score', { method: 'POST', pin, body: { member: memberId, finalist: id, criterion: c.key, value: n } });
+    if (r.ok) { if (current === id) saveState('Saved'); }
+    else if (r.status === 423) { locked = true; if (current === id) openFinalist(id); }
+    else saveState('Not saved. Tap the score again to retry.', true);
+  }
+
+  async function saveComment() {
+    if (locked || !current) return;
+    const id = current;
+    scores[id].comment = $('#comment').value;
+    saveState('Saving');
+    const r = await api('/api/committee/comment', { method: 'POST', pin, body: { member: memberId, finalist: id, comment: scores[id].comment } });
+    if (current !== id) return;
+    if (r.ok) saveState('Saved');
+    else if (r.status === 423) { locked = true; openFinalist(id); }
+    else saveState('Comment not saved. Check your connection.', true);
+  }
+
+  $('#comment').addEventListener('input', () => { clearTimeout(commentTimer); commentTimer = setTimeout(saveComment, 700); });
+  $('#comment').addEventListener('blur', () => { clearTimeout(commentTimer); saveComment(); });
+
+  function backToList() {
+    if (commentTimer) { clearTimeout(commentTimer); saveComment(); }
+    showList();
+  }
+  $('#back-btn').addEventListener('click', backToList);
+  $('#done-btn').addEventListener('click', backToList);
+
+  // ---------- keep lock status current
+  setInterval(async () => {
+    if (!pin || !memberId || document.hidden) return;
+    const r = await api('/api/committee/state?member=' + encodeURIComponent(memberId), { pin });
+    if (!r.ok) return;
+    const wasLocked = locked;
+    locked = r.data.locked;
+    if (!current) { scores = r.data.scores || {}; renderList(); }
+    else if (wasLocked !== locked) openFinalist(current);
+  }, 8000);
+
+  // ---------- start
+  (async function start() {
+    if (pin && await login(pin, true)) afterLogin();
+    else { localStorage.removeItem(LS_PIN); show('s-pin'); }
+  })();
+})();
+</script>
+</body>
+</html>
